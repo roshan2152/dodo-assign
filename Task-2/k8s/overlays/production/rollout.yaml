@@ -16,6 +16,7 @@ spec:
     metadata:
       labels:
         app: flask-app
+        environment: production
         version: v1
     spec:
       containers:
