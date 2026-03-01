@@ -6,10 +6,9 @@ spec:
   args:
   - name: service-name
   - name: namespace
-    value: default
+    value: production
 
   metrics:
-  # Success rate metric (requires Prometheus)
   - name: success-rate
     interval: 5s
     count: 2
@@ -34,7 +33,6 @@ spec:
             }[2m]
           ))
 
-  # Latency metric
   - name: latency
     interval: 5s
     count: 2

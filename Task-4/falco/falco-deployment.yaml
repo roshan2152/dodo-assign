@@ -1,0 +1,207 @@
+---
+# Falco - Runtime Security Monitoring
+# Detects suspicious behavior in real-time
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: falco
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: falco
+  namespace: falco
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: falco
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: falco
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: falco
+subjects:
+- kind: ServiceAccount
+  name: falco
+  namespace: falco
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-config
+  namespace: falco
+data:
+  falco.yaml: |
+    rules_file:
+      - /etc/falco/rules.yaml
+      - /etc/falco/rules.d/
+    
+    output_file:
+      enabled: true
+      keep_alive: false
+      filename: /var/log/falco
+
+    syslog_output:
+      enabled: false
+
+    file_output:
+      enabled: true
+      keep_alive: false
+      filename: /var/log/falco/alerts.log
+
+    stdout_output:
+      enabled: true
+
+    log_level: info
+    
+    buffered_outputs: false
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: falco-rules
+  namespace: falco
+data:
+  custom-rules.yaml: |
+    # Custom Falco Rules
+    # Note: In production, use Falco's built-in rules and custom rules
+    # following proper Falco rule syntax. This space is reserved for custom rules.
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: falco
+  namespace: falco
+spec:
+  selector:
+    matchLabels:
+      app: falco
+  template:
+    metadata:
+      labels:
+        app: falco
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      hostPID: true
+      serviceAccountName: falco
+      securityContext:
+        runAsUser: 0
+      containers:
+      - name: falco
+        image: falcosecurity/falco:latest
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+            - SYS_ADMIN
+            - SYS_PTRACE
+            - SYS_MODULE
+            - SYS_RESOURCE
+            - NET_ADMIN
+            - IPC_LOCK
+        volumeMounts:
+        - name: docker-sock
+          mountPath: /host/var/run/docker.sock
+        - name: containerd-sock
+          mountPath: /host/run/containerd/containerd.sock
+        - name: dev
+          mountPath: /host/dev
+        - name: proc
+          mountPath: /host/proc
+          readOnly: true
+        - name: boot
+          mountPath: /host/boot
+          readOnly: true
+        - name: lib
+          mountPath: /host/lib
+          readOnly: true
+        - name: usr
+          mountPath: /host/usr
+          readOnly: true
+        - name: etc
+          mountPath: /host/etc
+          readOnly: true
+        - name: falco-config
+          mountPath: /etc/falco
+        - name: falco-rules
+          mountPath: /etc/falco/rules.d
+        - name: falco-logs
+          mountPath: /var/log/falco
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1024Mi
+      volumes:
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+      - name: containerd-sock
+        hostPath:
+          path: /run/containerd/containerd.sock
+      - name: dev
+        hostPath:
+          path: /dev
+      - name: proc
+        hostPath:
+          path: /proc
+      - name: boot
+        hostPath:
+          path: /boot
+      - name: lib
+        hostPath:
+          path: /lib
+      - name: usr
+        hostPath:
+          path: /usr
+      - name: etc
+        hostPath:
+          path: /etc
+      - name: falco-config
+        configMap:
+          name: falco-config
+      - name: falco-rules
+        configMap:
+          name: falco-rules
+      - name: falco-logs
+        emptyDir: {}
+      tolerations:
+      - effect: NoSchedule
+        operator: Exists
+      - effect: NoExecute
+        operator: Exists
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: falco-alerts
+  namespace: falco
+spec:
+  ports:
+  - port: 5555
+    targetPort: 5555
+    protocol: TCP
+  selector:
+    app: falco

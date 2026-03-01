@@ -1,0 +1,107 @@
+---
+# HashiCorp Vault Deployment
+# Simplified setup for learning/assignment purposes
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-config
+  namespace: default
+data:
+  vault.hcl: |
+    ui = true
+    
+    listener "tcp" {
+      address       = "0.0.0.0:8200"
+      tls_disable   = 1
+    }
+    
+    storage "file" {
+      path = "/vault/file"
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vault
+  template:
+    metadata:
+      labels:
+        app: vault
+    spec:
+      serviceAccountName: vault
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        fsGroup: 1000
+      containers:
+      - name: vault
+        image: vault:latest
+        imagePullPolicy: IfNotPresent
+        args: ["server", "-config=/vault/config/vault.hcl"]
+        env:
+        - name: VAULT_ADDR
+          value: "http://0.0.0.0:8200"
+        ports:
+        - containerPort: 8200
+          name: http
+          protocol: TCP
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+            add:
+            - IPC_LOCK
+          readOnlyRootFilesystem: true
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        volumeMounts:
+        - name: vault-config
+          mountPath: /vault/config
+        - name: vault-data
+          mountPath: /vault/file
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: vault-config
+        configMap:
+          name: vault-config
+      - name: vault-data
+        emptyDir: {}
+      - name: tmp
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vault
+  namespace: default
+spec:
+  ports:
+  - port: 8200
+    targetPort: 8200
+    protocol: TCP
+    name: http
+  selector:
+    app: vault
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault
+  namespace: default

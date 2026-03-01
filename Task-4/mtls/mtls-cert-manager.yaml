@@ -1,0 +1,261 @@
+---
+# mTLS Setup using cert-manager for encrypted service-to-service communication
+# Install cert-manager: helm repo add jetstack https://charts.jetstack.io
+#                       helm install cert-manager jetstack/cert-manager -n cert-manager --create-namespace
+# OR: kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.10.0/cert-manager.crds.yaml
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+
+---
+# Self-Signed CA Issuer (for testing/lab purposes)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+
+---
+# Intermediate CA Certificate (for mTLS)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ca-cert
+  namespace: cert-manager
+spec:
+  secretName: ca-cert-secret
+  commonName: voting-app-ca
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+  isCA: true
+
+---
+# CA Issuer using the CA certificate
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: ca-issuer
+spec:
+  ca:
+    secretName: ca-cert-secret
+
+---
+# Certificate for Voting Service
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: vote-service-cert
+  namespace: voting-app
+spec:
+  secretName: vote-service-tls
+  commonName: vote.voting-app.svc.cluster.local
+  dnsNames:
+  - vote
+  - vote.voting-app
+  - vote.voting-app.svc
+  - vote.voting-app.svc.cluster.local
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+
+---
+# Certificate for Worker Service
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: worker-service-cert
+  namespace: voting-app
+spec:
+  secretName: worker-service-tls
+  commonName: worker.voting-app.svc.cluster.local
+  dnsNames:
+  - worker
+  - worker.voting-app
+  - worker.voting-app.svc
+  - worker.voting-app.svc.cluster.local
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+
+---
+# Certificate for Result Service
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: result-service-cert
+  namespace: voting-app
+spec:
+  secretName: result-service-tls
+  commonName: result.voting-app.svc.cluster.local
+  dnsNames:
+  - result
+  - result.voting-app
+  - result.voting-app.svc
+  - result.voting-app.svc.cluster.local
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+
+---
+# Certificate for Database Service
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: postgres-service-cert
+  namespace: voting-app
+spec:
+  secretName: postgres-service-tls
+  commonName: postgres.voting-app.svc.cluster.local
+  dnsNames:
+  - postgres
+  - postgres.voting-app
+  - postgres.voting-app.svc
+  - postgres.voting-app.svc.cluster.local
+  issuerRef:
+    name: ca-issuer
+    kind: ClusterIssuer
+
+---
+# Example: Vote Deployment with mTLS enabled
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vote-mtls
+  namespace: voting-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vote-mtls
+  template:
+    metadata:
+      labels:
+        app: vote-mtls
+    spec:
+      serviceAccountName: developer
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: vote
+        image: voting-app/vote:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: WORKER_HOST
+          value: "worker.voting-app.svc.cluster.local"
+        - name: WORKER_PORT
+          value: "5000"
+        - name: USE_TLS
+          value: "true"
+        - name: TLS_CERT_PATH
+          value: "/etc/tls/certs/tls.crt"
+        - name: TLS_KEY_PATH
+          value: "/etc/tls/certs/tls.key"
+        - name: CA_CERT_PATH
+          value: "/etc/tls/certs/ca.crt"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tls-certs
+          mountPath: /etc/tls/certs
+          readOnly: true
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: tls-certs
+        secret:
+          secretName: vote-service-tls
+
+---
+# Example: Worker Deployment with mTLS enabled
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-mtls
+  namespace: voting-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker-mtls
+  template:
+    metadata:
+      labels:
+        app: worker-mtls
+    spec:
+      serviceAccountName: operator
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+      - name: worker
+        image: voting-app/worker:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: DB_HOST
+          value: "postgres.voting-app.svc.cluster.local"
+        - name: DB_PORT
+          value: "5432"
+        - name: USE_TLS
+          value: "true"
+        - name: TLS_CERT_PATH
+          value: "/etc/tls/certs/tls.crt"
+        - name: TLS_KEY_PATH
+          value: "/etc/tls/certs/tls.key"
+        - name: CA_CERT_PATH
+          value: "/etc/tls/certs/ca.crt"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tls-certs
+          mountPath: /etc/tls/certs
+          readOnly: true
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: tls-certs
+        secret:
+          secretName: worker-service-tls
+
+---
+# Service exposing worker with TLS
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-mtls
+  namespace: voting-app
+  annotations:
+    cert-manager.io/inject-ca-from: voting-app/worker-service-cert
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5000
+    targetPort: 5000
+    protocol: TCP
+    name: https
+  selector:
+    app: worker-mtls

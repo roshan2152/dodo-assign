@@ -1,0 +1,162 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: anomaly-detection-rules
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: anomaly-detection
+      interval: 1m
+      rules:
+        # Statistical anomaly detection: Predict request rate and compare
+        - alert: RequestRateAnomaly
+          expr: |
+            abs(rate(flask_http_request_total[5m]) - avg_over_time(rate(flask_http_request_total[5m] offset 1w)[1h:5m])) > 2 * stddev_over_time(rate(flask_http_request_total[5m] offset 1w)[1h:5m])
+          for: 10m
+          labels:
+            severity: warning
+            anomaly_type: statistical
+          annotations:
+            summary: "Anomalous request rate detected"
+            description: "Request rate {{ $value }} is statistically anomalous compared to historical baseline (1 week)"
+
+        # Latency anomaly: p95 latency spike
+        - alert: LatencyAnomaly
+          expr: |
+            histogram_quantile(0.95, rate(flask_http_request_duration_seconds_bucket[5m])) 
+            > 
+            histogram_quantile(0.95, avg_over_time(rate(flask_http_request_duration_seconds_bucket[5m] offset 7d)[1h:5m])) * 2
+          for: 5m
+          labels:
+            severity: warning
+            anomaly_type: latency_spike
+          annotations:
+            summary: "Latency anomaly detected"
+            description: "P95 latency {{ $value }}s is significantly higher than baseline (2x deviation)"
+
+        # Error rate anomaly: Significant increase in errors
+        - alert: ErrorRateAnomaly
+          expr: |
+            rate(flask_http_request_total{status=~"5.."}[5m]) 
+            > 
+            avg_over_time(rate(flask_http_request_total{status=~"5.."}[5m] offset 7d)[1h:5m]) * 3
+          for: 5m
+          labels:
+            severity: warning
+            anomaly_type: error_spike
+          annotations:
+            summary: "Abnormal error rate detected"
+            description: "Error rate {{ $value }} is 3x higher than normal baseline"
+
+        # Memory usage anomaly: Gradual or sudden memory leak
+        - alert: MemoryLeakDetected
+          expr: |
+            rate(container_memory_usage_bytes{container="flask-app"}[1h]) > 0
+          for: 30m
+          labels:
+            severity: warning
+            anomaly_type: memory_leak
+          annotations:
+            summary: "Potential memory leak detected"
+            description: "Memory usage is continuously increasing at {{ $value }}B/s over 1 hour"
+
+        # CPU usage pattern anomaly
+        - alert: UnusualCPUPattern
+          expr: |
+            rate(container_cpu_usage_seconds_total{container="flask-app"}[5m]) 
+            > 
+            avg_over_time(rate(container_cpu_usage_seconds_total{container="flask-app"}[5m] offset 7d)[1h:5m]) * 2.5
+          for: 10m
+          labels:
+            severity: warning
+            anomaly_type: cpu_spike
+          annotations:
+            summary: "Unusual CPU usage pattern detected"
+            description: "CPU usage {{ $value }}s is 2.5x higher than baseline"
+
+        # Database query time anomaly
+        - alert: SlowQueryAnomalyDetected
+          expr: |
+            histogram_quantile(0.99, rate(app_db_query_duration_seconds_bucket[5m])) 
+            > 
+            histogram_quantile(0.99, avg_over_time(rate(app_db_query_duration_seconds_bucket[5m] offset 7d)[1h:5m])) * 3
+          for: 5m
+          labels:
+            severity: warning
+            anomaly_type: db_performance
+          annotations:
+            summary: "Database query performance degradation"
+            description: "P99 query time {{ $value }}s is significantly slower than baseline"
+
+        # Traffic pattern shift
+        - alert: TrafficPatternAnomalyDetected
+          expr: |
+            abs(rate(flask_http_request_total[1m]) - avg_over_time(rate(flask_http_request_total[1m] offset 7d)[1h:1m])) 
+            / 
+            avg_over_time(rate(flask_http_request_total[1m] offset 7d)[1h:1m])
+            > 2
+          for: 15m
+          labels:
+            severity: info
+            anomaly_type: traffic_pattern
+          annotations:
+            summary: "Abnormal traffic pattern detected"
+            description: "Traffic level has deviated >100% from historical baseline"
+
+        # Connection pool saturation anomaly
+        - alert: ConnectionPoolAnomalyDetected
+          expr: |
+            rate(app_db_connections_active[5m]) 
+            > 
+            avg_over_time(rate(app_db_connections_active[5m] offset 7d)[1h:5m]) * 2
+          for: 5m
+          labels:
+            severity: warning
+            anomaly_type: connection_saturation
+          annotations:
+            summary: "Database connection pool saturation anomaly"
+            description: "Active connections {{ $value }} is significantly higher than baseline"
+
+---
+# Recording rules for efficient anomaly detection
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: anomaly-detection-recording-rules
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack-prometheus
+    role: recording-rules
+spec:
+  groups:
+    - name: anomaly-detection:recording
+      interval: 1m
+      rules:
+        # Baseline metrics from 1 week ago
+        - record: :flask_request_rate:baseline_1w
+          expr: avg_over_time(rate(flask_http_request_total[5m] offset 7d)[1h:5m])
+
+        - record: :flask_latency_p95:baseline_1w
+          expr: histogram_quantile(0.95, avg_over_time(rate(flask_http_request_duration_seconds_bucket[5m] offset 7d)[1h:5m]))
+
+        - record: :flask_error_rate:baseline_1w
+          expr: avg_over_time(rate(flask_http_request_total{status=~"5.."}[5m] offset 7d)[1h:5m])
+
+        # Standard deviation for statistical tests
+        - record: :flask_request_rate:stddev_1w
+          expr: stddev_over_time(rate(flask_http_request_total[5m] offset 7d)[1h:5m])
+
+        # Z-score calculation (currently actual vs baseline)
+        - record: :flask_request_rate:zscore
+          expr: |
+            (rate(flask_http_request_total[5m]) - :flask_request_rate:baseline_1w) 
+            / 
+            (:flask_request_rate:stddev_1w + 0.001)
+
+        # Anomaly score (0-100)
+        - record: :flask_request_rate:anomaly_score
+          expr: |
+            min(100, max(0, abs(:flask_request_rate:zscore) * 10))

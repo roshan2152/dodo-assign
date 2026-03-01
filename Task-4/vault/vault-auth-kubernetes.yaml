@@ -1,0 +1,15 @@
+---
+# Vault Kubernetes Authentication Setup
+# This enables Vault to authenticate Kubernetes service accounts
+# 
+# Vault is now deployed via Helm in the vault namespace in dev mode
+# Dev mode has auto-unsealing, so no manual unseal needed
+# 
+# To configure K8s auth, run these commands:
+# 1. kubectl port-forward -n vault svc/vault 8200:8200
+# 2. export VAULT_ADDR='http://localhost:8200'
+# 3. export VAULT_TOKEN='<root-token from helm install>'
+# 
+# The root token is printed in helm install output. In dev mode, authentication is automatic.
+# To access Vault CLI:
+# kubectl exec -it -n vault vault-0 -- sh
