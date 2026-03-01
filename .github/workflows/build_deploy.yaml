@@ -120,7 +120,7 @@ jobs:
             -t $ECR_REGISTRY/$IMAGE_NAME:latest .
 
       - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.28.0
         with:
           image-ref: ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
           format: table
