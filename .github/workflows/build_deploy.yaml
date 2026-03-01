@@ -120,11 +120,10 @@ jobs:
             -t $ECR_REGISTRY/$IMAGE_NAME:latest .
 
       - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@0.28.0
-        with:
-          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
-          format: table
-          exit-code: 0
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+          trivy image --format table --exit-code 0 \
+            $ECR_REGISTRY/$IMAGE_NAME:${{ steps.meta.outputs.tag }}
 
       - name: Push to ECR
         run: |
