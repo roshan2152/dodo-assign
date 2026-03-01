@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: flask-app-project
+  namespace: argocd
+spec:
+  description: Flask App CI/CD Project
+
+  # Source repositories
+  sourceRepos:
+  - https://github.com/roshan2152/dodo-assign.git
+
+  # Destination clusters and namespaces
+  destinations:
+  - namespace: staging
+    server: https://kubernetes.default.svc
+  - namespace: production
+    server: https://kubernetes.default.svc
+  - namespace: argocd
+    server: https://kubernetes.default.svc
+
+  # Allowed cluster resources
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+
+  # Allowed namespaced resources
+  namespaceResourceWhitelist:
+  - group: '*'
+    kind: '*'
+
+  # Sync windows
+  syncWindows:
+  - kind: allow
+    schedule: '* * * * *'
+    duration: 24h
+    applications:
+    - flask-app-staging
+  - kind: allow
+    schedule: '* * * * *'
+    duration: 24h
+    applications:
+    - flask-app-production
+    - flask-app-bluegreen
+    manualSync: true

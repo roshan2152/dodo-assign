@@ -1,0 +1,80 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: flask-app-bluegreen
+  labels:
+    app: flask-app
+    strategy: bluegreen
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: flask-app
+
+  template:
+    metadata:
+      labels:
+        app: flask-app
+        version: v1
+    spec:
+      containers:
+      - name: flask-app
+        image: REGISTRY_PLACEHOLDER/myapp:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+
+  strategy:
+    blueGreen:
+      # Service for active version
+      activeService: flask-app-active
+      # Service for preview version
+      previewService: flask-app-preview
+      # Manual promotion required (safety for production)
+      autoPromotionEnabled: false
+      # Scale down old version after promotion
+      scaleDownDelaySeconds: 30
+      scaleDownDelayRevisionLimit: 2
+      # Pre-promotion analysis
+      prePromotionAnalysis:
+        templates:
+        - templateName: flask-app-success-rate
+        args:
+        - name: service-name
+          value: flask-app-preview
+      # Post-promotion analysis
+      postPromotionAnalysis:
+        templates:
+        - templateName: flask-app-success-rate
+        args:
+        - name: service-name
+          value: flask-app-active

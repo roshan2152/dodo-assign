@@ -1,0 +1,204 @@
+name: CI/CD Pipeline - Flask App
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'Task-2/**'
+      - '.github/workflows/build_deploy.yaml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'Task-2/**'
+
+permissions:
+  id-token: write
+  contents: write  # for changelog and gitops updates
+  security-events: write  # for Trivy SARIF upload
+  pull-requests: write  # for PR comments
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY || 'REGISTRY_NOT_SET' }}
+  IMAGE_NAME: flask-app
+  WORKING_DIR: Task-2
+
+jobs:
+  # ── Job 1: Lint & Static Analysis ──────────────────────────────────────
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install linting tools
+        run: pip install flake8 black
+
+      - name: Code formatting check
+        run: black --check .
+
+      - name: Lint with flake8
+        run: flake8 . --max-line-length=120 --exclude=.git,__pycache__
+
+  # ── Job 2: Unit & Integration Tests ────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    needs: lint
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest pytest-cov
+
+      - name: Run unit tests with coverage
+        env:
+          PYTHONPATH: ${{ github.workspace }}/Task-2
+        run: pytest tests/ --cov=. --cov-report=xml --cov-report=html --cov-report=term
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ${{ env.WORKING_DIR }}/coverage.xml
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          MINIMUM_GREEN: 80
+          MINIMUM_ORANGE: 60
+
+  # ── Job 3: Build, Trivy Scan, Push to ECR ──────────────────────────────
+  build-and-push:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tag }}
+      image-digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: GitHubActionsSession
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set image tag
+        id: meta
+        run: |
+          echo "tag=${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+      - name: Build Docker image
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/$IMAGE_NAME:${{ steps.meta.outputs.tag }} \
+            -t $ECR_REGISTRY/$IMAGE_NAME:latest .
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.ECR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag }}
+          format: table
+          exit-code: 0
+
+      - name: Push to ECR
+        run: |
+          docker push $ECR_REGISTRY/$IMAGE_NAME:${{ steps.meta.outputs.tag }}
+          docker push $ECR_REGISTRY/$IMAGE_NAME:latest
+
+  # ── Job 4: Update GitOps Manifests (staging) ───────────────────────────
+  update-staging-manifest:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/develop' && needs.build-and-push.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Update staging image tag
+        run: |
+          cd Task-2/k8s/overlays/staging
+          kustomize edit set image REGISTRY_PLACEHOLDER/myapp=$ECR_REGISTRY/$IMAGE_NAME:${{ needs.build-and-push.outputs.image-tag }}
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Task-2/k8s/overlays/staging/kustomization.yaml
+          git commit -m "chore(staging): update image to ${{ needs.build-and-push.outputs.image-tag }}"
+          git push
+
+      - name: Sync with ArgoCD
+        continue-on-error: true
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            ${{ secrets.ARGOCD_SERVER }}/api/v1/applications/flask-app-staging/sync
+
+  # ── Job 5: Update GitOps Manifests (production) ────────────────────────
+  update-production-manifest:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' && needs.build-and-push.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Update production image tag
+        run: |
+          cd Task-2/k8s/overlays/production
+          kustomize edit set image REGISTRY_PLACEHOLDER/myapp=$ECR_REGISTRY/$IMAGE_NAME:${{ needs.build-and-push.outputs.image-tag }}
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Task-2/k8s/overlays/production/kustomization.yaml
+          git commit -m "chore(production): update image to ${{ needs.build-and-push.outputs.image-tag }}"
+          git push
+
+      - name: Sync with ArgoCD
+        continue-on-error: true
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            ${{ secrets.ARGOCD_SERVER }}/api/v1/applications/flask-app-production/sync

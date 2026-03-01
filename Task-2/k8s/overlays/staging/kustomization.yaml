@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: staging
+
+
+resources:
+- namespace.yaml
+- ingress.yaml
+- hpa.yaml
+- ../../base
+
+commonLabels:
+  environment: staging
+
+replicas:
+- count: 2
+  name: flask-app
+
+images:
+- name: REGISTRY_PLACEHOLDER/myapp
+  newName: 818604465858.dkr.ecr.ap-south-1.amazonaws.com/flask-app
+  newTag: latest
