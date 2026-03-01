@@ -169,10 +169,15 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 65534
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: trivy
-        image: aquasec/trivy:latest
+        image: aquasec/trivy:0.58.2
         args: ["server", "--listen", "0.0.0.0:8080"]
+        env:
+        - name: TRIVY_CACHE_DIR
+          value: /tmp/.cache
         ports:
         - containerPort: 8080
         securityContext:
@@ -189,10 +194,10 @@ spec:
             cpu: 1000m
             memory: 1024Mi
         volumeMounts:
-        - name: cache
-          mountPath: /root/.cache/trivy
+        - name: tmp
+          mountPath: /tmp
       volumes:
-      - name: cache
+      - name: tmp
         emptyDir: {}
 
 ---

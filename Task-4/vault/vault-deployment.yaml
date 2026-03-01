@@ -40,9 +40,11 @@ spec:
         runAsNonRoot: true
         runAsUser: 100
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: vault
-        image: vault:latest
+        image: hashicorp/vault:1.15.6
         imagePullPolicy: IfNotPresent
         args: ["server", "-config=/vault/config/vault.hcl"]
         env:
@@ -59,7 +61,7 @@ spec:
             - ALL
             add:
             - IPC_LOCK
-          readOnlyRootFilesystem: true
+          readOnlyRootFilesystem: false
         resources:
           requests:
             cpu: 250m
