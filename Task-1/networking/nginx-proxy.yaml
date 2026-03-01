@@ -1,0 +1,146 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-proxy-config
+  namespace: prod
+data:
+  nginx.conf: |
+    events {
+      worker_connections 1024;
+    }
+    http {
+      upstream vote_backend {
+        server vote.prod.svc.cluster.local:80;
+      }
+      upstream result_backend {
+        server result.prod.svc.cluster.local:80;
+      }
+      
+      server {
+        listen 80;
+        
+        # Result app JS files (requested from root)
+        location = /angular.min.js {
+          proxy_pass http://result_backend;
+          proxy_set_header Host $host;
+        }
+        location = /app.js {
+          proxy_pass http://result_backend;
+          proxy_set_header Host $host;
+        }
+        location = /socket.io.js {
+          proxy_pass http://result_backend;
+          proxy_set_header Host $host;
+        }
+        
+        # Result app's static assets (absolute paths used by result)
+        location /stylesheets {
+          proxy_pass http://result_backend;
+          proxy_set_header Host $host;
+        }
+        
+        # Result app's javascripts
+        location /javascripts {
+          proxy_pass http://result_backend;
+          proxy_set_header Host $host;
+        }
+        
+        # Result app's socket.io
+        location /socket.io {
+          proxy_pass http://result_backend;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+          proxy_set_header Host $host;
+        }
+        
+        # Vote app's static assets
+        location /static {
+          proxy_pass http://vote_backend;
+          proxy_set_header Host $host;
+        }
+        
+        # Result page
+        location /result {
+          rewrite ^/result(.*)$ /$1 break;
+          proxy_pass http://result_backend;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+        }
+        
+        # Vote page
+        location /vote {
+          rewrite ^/vote(.*)$ /$1 break;
+          proxy_pass http://vote_backend;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        
+        # Default to vote app
+        location / {
+          proxy_pass http://vote_backend;
+          proxy_set_header Host $host;
+          proxy_set_header X-Real-IP $remote_addr;
+          proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+          proxy_set_header X-Forwarded-Proto $scheme;
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-proxy
+  namespace: prod
+  labels:
+    app: nginx-proxy
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-proxy
+  template:
+    metadata:
+      labels:
+        app: nginx-proxy
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-proxy-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-proxy
+  namespace: prod
+spec:
+  selector:
+    app: nginx-proxy
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP

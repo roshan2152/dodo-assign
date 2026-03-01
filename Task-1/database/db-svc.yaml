@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: db     
+  namespace: prod
+spec:
+  type: ExternalName
+  externalName: db.postgres.svc.cluster.local
+  ports:
+  - port: 5432
+    targetPort: 5432
