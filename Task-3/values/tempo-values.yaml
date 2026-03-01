@@ -1,0 +1,40 @@
+# Tempo distributed configuration
+tempo:
+  metricsGenerator:
+    enabled: false
+
+# Storage configuration
+storage:
+  trace:
+    backend: local
+
+# OTLP receivers
+traces:
+  otlp:
+    grpc:
+      enabled: true
+    http:
+      enabled: true
+
+# Component replicas (keep minimal for dev/staging)
+distributor:
+  replicas: 1
+
+ingester:
+  replicas: 1
+  persistence:
+    enabled: false
+
+compactor:
+  replicas: 1
+
+querier:
+  replicas: 1
+
+queryFrontend:
+  replicas: 1
+
+# Gateway configuration
+gateway:
+  enabled: true
+  replicas: 1

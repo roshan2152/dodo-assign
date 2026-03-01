@@ -1,0 +1,132 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring
+data:
+  alertmanager.yml: |
+    global:
+      resolve_timeout: 5m
+      slack_api_url: '${SLACK_WEBHOOK_URL}'  # Set via environment variable
+    
+    route:
+      receiver: 'default'
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 12h
+      routes:
+        # High priority alerts go to Slack immediately
+        - match:
+            severity: critical
+          receiver: 'slack-critical'
+          group_wait: 0s
+          repeat_interval: 1h
+        
+        # Warning alerts batched before sending
+        - match:
+            severity: warning
+          receiver: 'slack-warnings'
+          group_wait: 1m
+          repeat_interval: 4h
+        
+        # Application-specific routing
+        - match:
+            job: flask-app
+          receiver: 'slack-app-alerts'
+          group_interval: 5m
+          repeat_interval: 2h
+
+    receivers:
+      # Default receiver (all alerts)
+      - name: 'default'
+        slack_configs:
+          - channel: '#alerts'
+            title: 'Alert: {{ .GroupLabels.alertname }}'
+            text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+            send_resolved: true
+            color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+      
+      # Critical alerts (high priority)
+      - name: 'slack-critical'
+        slack_configs:
+          - channel: '#critical-alerts'
+            title: '🔴 CRITICAL: {{ .GroupLabels.alertname }}'
+            text: |
+              Severity: {{ .GroupLabels.severity }}
+              {{ range .Alerts }}
+              Instance: {{ .Labels.instance }}
+              Description: {{ .Annotations.description }}
+              Summary: {{ .Annotations.summary }}
+              {{ end }}
+            send_resolved: true
+            actions:
+              - type: button
+                text: 'View in Prometheus'
+                url: 'http://prometheus-server:9090/graph'
+              - type: button
+                text: 'View in Grafana'
+                url: 'http://grafana:80'
+      
+      # Warning alerts
+      - name: 'slack-warnings'
+        slack_configs:
+          - channel: '#alerts'
+            title: '⚠️  WARNING: {{ .GroupLabels.alertname }}'
+            text: |
+              {{ range .Alerts }}
+              Description: {{ .Annotations.description }}
+              {{ end }}
+            send_resolved: true
+      
+      # Application alerts
+      - name: 'slack-app-alerts'
+        slack_configs:
+          - channel: '#app-alerts'
+            title: '{{ .GroupLabels.alertname }} - {{ .Status | toUpper }}'
+            text: |
+              {{ range .Alerts }}
+              Service: {{ .Labels.service }}
+              Instance: {{ .Labels.instance }}
+              {{ .Annotations.description }}
+              {{ end }}
+            send_resolved: true
+
+    inhibit_rules:
+      # Don't alert if the entire job is down
+      - source_match:
+          alertname: 'FlaskAppDown'
+        target_match_re:
+          alertname: '.*'
+        equal: ['job']
+      
+      # Don't send warning for high latency if app is already down
+      - source_match:
+          alertname: 'FlaskAppDown'
+        target_match:
+          alertname: 'HighLatency'
+        equal: ['job']
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-slack-webhook
+  namespace: monitoring
+type: Opaque
+stringData:
+  slack-webhook-url: ""  # Replace with actual webhook URL
+---
+# AlertManager Service for easy access
+apiVersion: v1
+kind: Service
+metadata:
+  name: alertmanager-custom
+  namespace: monitoring
+spec:
+  selector:
+    app.kubernetes.io/name: alertmanager
+  ports:
+    - name: web
+      port: 9093
+      targetPort: 9093
+  type: ClusterIP

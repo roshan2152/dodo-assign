@@ -1,0 +1,222 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-tempo-basic
+  namespace: monitoring
+data:
+  tempo-basic-dashboard.json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": "Prometheus",
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "gnetId": null,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "refresh": "30s",
+      "schemaVersion": 36,
+      "style": "dark",
+      "tags": ["tempo", "tracing", "observability"],
+      "templating": {
+        "list": [
+          {
+            "current": {
+              "selected": true,
+              "text": "Tempo",
+              "value": "Tempo"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "label": "Tempo DataSource",
+            "multi": false,
+            "name": "datasource",
+            "options": [],
+            "query": "tempo",
+            "refresh": 1,
+            "regex": "",
+            "skipUrlSync": false,
+            "sort": 0,
+            "type": "datasource"
+          },
+          {
+            "allValue": null,
+            "current": {
+              "selected": true,
+              "text": "flask-app",
+              "value": "flask-app"
+            },
+            "hide": 0,
+            "includeAll": false,
+            "label": "Service Name",
+            "multi": false,
+            "name": "service",
+            "options": [
+              {
+                "selected": true,
+                "text": "flask-app",
+                "value": "flask-app"
+              },
+              {
+                "selected": false,
+                "text": "worker",
+                "value": "worker"
+              },
+              {
+                "selected": false,
+                "text": "result",
+                "value": "result"
+              }
+            ],
+            "query": "flask-app, worker, result",
+            "skipUrlSync": false,
+            "sort": 0,
+            "tagValuesQuery": "",
+            "tagsQuery": "",
+            "type": "custom"
+          }
+        ]
+      },
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h"]
+      },
+      "title": "Tempo - Distributed Tracing",
+      "uid": "tempo-basic",
+      "version": 1,
+      "panels": [
+        {
+          "datasource": "Tempo",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "hideFrom": {
+                  "tooltip": false,
+                  "viz": false,
+                  "legend": false
+                },
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "auto"
+              },
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 24,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {},
+          "pluginVersion": "8.0.0",
+          "targets": [
+            {
+              "datasource": "Tempo",
+              "format": "table",
+              "name": "Query results",
+              "query": "{resource.service.name=\"$service\"} | select(duration > 0ms)",
+              "refId": "A",
+              "type": "traceql"
+            }
+          ],
+          "title": "All Traces from Service (Last Hour)",
+          "type": "table"
+        },
+        {
+          "datasource": "Tempo",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "hideFrom": {
+                  "tooltip": false,
+                  "viz": false,
+                  "legend": false
+                },
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "auto"
+              },
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 0,
+            "y": 10
+          },
+          "id": 2,
+          "options": {},
+          "pluginVersion": "8.0.0",
+          "targets": [
+            {
+              "datasource": "Tempo",
+              "format": "table",
+              "name": "Slow traces",
+              "query": "{resource.service.name=\"$service\"} | select(duration > 500ms)",
+              "refId": "A",
+              "type": "traceql"
+            }
+          ],
+          "title": "Slow Traces (>500ms)",
+          "type": "table"
+        },
+        {
+          "datasource": "Tempo",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "hideFrom": {
+                  "tooltip": false,
+                  "viz": false,
+                  "legend": false
+                },
+                "lineWidth": 1,
+                "fillOpacity": 0,
+                "showPoints": "auto"
+              },
+              "mappings": []
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 10,
+            "w": 12,
+            "x": 12,
+            "y": 10
+          },
+          "id": 3,
+          "options": {},
+          "pluginVersion": "8.0.0",
+          "targets": [
+            {
+              "datasource": "Tempo",
+              "format": "table",
+              "name": "Error traces",
+              "query": "{resource.service.name=\"$service\", status=error}",
+              "refId": "A",
+              "type": "traceql"
+            }
+          ],
+          "title": "Error Traces",
+          "type": "table"
+        }
+      ]
+    }

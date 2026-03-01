@@ -3,22 +3,15 @@ kind: Kustomization
 
 namespace: production
 
-
 resources:
 - namespace.yaml
+- rollout.yaml
+- services.yaml
+- analysis-template.yaml
+- servicemonitor.yaml
 - ingress.yaml
 - hpa.yaml
 - pdb.yaml
-- ../../base
 
 commonLabels:
   environment: production
-
-replicas:
-- count: 3
-  name: flask-app
-
-images:
-- name: REGISTRY_PLACEHOLDER/myapp
-  newName: 818604465858.dkr.ecr.ap-south-1.amazonaws.com/flask-app
-  newTag: "6"

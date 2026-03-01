@@ -1,0 +1,15 @@
+# Grafana configuration
+adminPassword: admin123
+
+persistence:
+  enabled: false
+
+service:
+  type: ClusterIP
+
+# Mount external datasources ConfigMap
+extraConfigmapMounts:
+  - name: grafana-datasources
+    mountPath: /etc/grafana/provisioning/datasources
+    configMap: grafana-datasources
+    readOnly: true

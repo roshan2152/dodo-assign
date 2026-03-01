@@ -1,0 +1,64 @@
+# Falco Helm Chart Values for Kubernetes Deployment
+# Based on: https://falco.org/docs/getting-started/falco-kubernetes-quickstart/
+
+# Enable eBPF mode (recommended for managed Kubernetes clusters)
+# eBPF doesn't require kernel module loading
+ebpf:
+  enabled: true
+
+# Falco core configuration
+falco:
+  # gRPC API for Falco
+  grpc:
+    enabled: true
+  
+  # gRPC Output for streaming alerts
+  grpcOutput:
+    enabled: true
+
+# Service Account
+serviceAccount:
+  create: true
+  name: falco
+
+# RBAC roles and bindings
+rbac:
+  create: true
+
+# Pod Security Policy
+podSecurityPolicy:
+  create: false
+
+# Resource limits
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1024Mi
+  requests:
+    cpu: 100m
+    memory: 512Mi
+
+# Host networking
+hostNetwork: true
+
+# DaemonSet tolerations for node taints
+tolerations:
+  - operator: Exists
+
+# Node selector (optional)
+nodeSelector: {}
+
+# Custom rules ConfigMap
+customRules:
+  enabled: true
+  configMap:
+    name: falco-custom-rules
+    key: custom-rules
+
+# Logging
+logging:
+  level: info
+
+# Falco alerts output
+falcoAlertsOutput:
+  enabled: true

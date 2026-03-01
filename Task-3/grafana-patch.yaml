@@ -1,0 +1,27 @@
+spec:
+  template:
+    spec:
+      volumes:
+      - name: dashboards-provisioning
+        configMap:
+          name: grafana-dashboards-provisioning
+      - name: dashboards-app-performance
+        configMap:
+          name: grafana-dashboards-app-performance
+      - name: dashboards-infrastructure
+        configMap:
+          name: grafana-dashboards-infrastructure
+      - name: dashboards-node-exporter
+        configMap:
+          name: grafana-dashboard-node-exporter
+      containers:
+      - name: grafana
+        volumeMounts:
+        - name: dashboards-provisioning
+          mountPath: /etc/grafana/provisioning/dashboards
+        - name: dashboards-app-performance
+          mountPath: /var/lib/grafana/dashboards/app-performance
+        - name: dashboards-infrastructure
+          mountPath: /var/lib/grafana/dashboards/infrastructure
+        - name: dashboards-node-exporter
+          mountPath: /var/lib/grafana/dashboards/node-exporter

@@ -1,0 +1,209 @@
+---
+# Image Security - Pull Secrets and Scanning
+apiVersion: v1
+kind: Secret
+metadata:
+  name: registry-credentials
+  namespace: voting-app
+type: kubernetes.io/dockercfg
+data:
+  .dockercfg: eyJhdXRoIjoge319Cg==
+  # Replace with your actual docker config in base64
+  # Generate: cat ~/.docker/config.json | base64
+
+---
+# Image Pull Secret for service accounts
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: image-puller
+  namespace: voting-app
+imagePullSecrets:
+- name: registry-credentials
+
+---
+# Admission Controller for Image Scanning
+# This webhook prevents deployment of unscanned images
+# Install Kyverno: helm repo add kyverno https://kyverno.github.io/kyverno/
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: allowed-registries
+spec:
+  validationFailureAction: enforce
+  rules:
+  - name: check-registries
+    match:
+      resources:
+        kinds:
+        - Pod
+    validate:
+      message: "Image must be from approved registries"
+      pattern:
+        spec:
+          containers:
+          - image: "docker.io/* | gcr.io/* | quay.io/*"
+
+---
+# Policy: Require image scanning report
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-image-scan
+spec:
+  validationFailureAction: audit
+  rules:
+  - name: check-image-scan
+    match:
+      resources:
+        kinds:
+        - Pod
+    validate:
+      message: "Image must have scan results"
+      pattern:
+        metadata:
+          annotations:
+            image.policy/scanned: "true"
+
+---
+# Policy: Disallow privileged images
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-images
+spec:
+  validationFailureAction: enforce
+  rules:
+  - name: no-privileged-images
+    match:
+      resources:
+        kinds:
+        - Pod
+    validate:
+      message: "Privileged containers are not allowed"
+      pattern:
+        spec:
+          containers:
+          - securityContext:
+              privileged: false
+
+---
+# Policy: Require image digest (immutable reference)
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-image-digest
+spec:
+  validationFailureAction: audit
+  rules:
+  - name: check-image-digest
+    match:
+      resources:
+        kinds:
+        - Pod
+    validate:
+      message: "Image must use @sha256 digest instead of tags"
+      pattern:
+        spec:
+          containers:
+          - image: "*@sha256:*"
+
+---
+# Image Scanning ConfigMap
+# Integration with tools like Trivy, Anchore, or Clair
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: image-scan-config
+  namespace: default
+data:
+  scan-config.yaml: |
+    # Container Image Scanning Configuration
+    
+    # Allowed registries
+    registries:
+    - docker.io
+    - gcr.io
+    - quay.io
+    
+    # Scanning tools
+    scanners:
+      trivy:
+        enabled: true
+        endpoint: "http://trivy:8080"
+        severity: ["MEDIUM", "HIGH", "CRITICAL"]
+      
+      anchore:
+        enabled: false
+        endpoint: "http://anchore:8228"
+    
+    # Failure thresholds
+    thresholds:
+      critical: 0        # Fail if any critical vulnerability
+      high: 1            # Fail if more than 1 high vulnerability
+      medium: 5
+    
+    # Exceptions for known CVEs
+    exceptions:
+    - image: "voting-app:*"
+      cves:
+      - "CVE-2024-1234"  # Known and acceptable risk
+
+---
+# Trivy Scanner Deployment (lightweight vulnerability scanner)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trivy-server
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: trivy
+  template:
+    metadata:
+      labels:
+        app: trivy
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+      - name: trivy
+        image: aquasec/trivy:latest
+        args: ["server", "--listen", "0.0.0.0:8080"]
+        ports:
+        - containerPort: 8080
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1024Mi
+        volumeMounts:
+        - name: cache
+          mountPath: /root/.cache/trivy
+      volumes:
+      - name: cache
+        emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trivy-server
+  namespace: default
+spec:
+  ports:
+  - port: 8080
+    targetPort: 8080
+  selector:
+    app: trivy

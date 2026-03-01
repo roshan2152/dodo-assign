@@ -1,0 +1,66 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: flask-app-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack-prometheus
+    role: alert-rules
+spec:
+  groups:
+    - name: flask-app
+      interval: 30s
+      rules:
+        - alert: FlaskAppDown
+          expr: up{job="flask-app"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Flask application is down"
+            description: "Flask app {{ $labels.instance }} has been down for more than 2 minutes"
+
+        - alert: HighErrorRate
+          expr: rate(flask_http_request_total{status=~"5.."}[5m]) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High error rate detected"
+            description: "Flask app is experiencing {{ $value }} errors per second"
+
+        - alert: HighLatency
+          expr: histogram_quantile(0.95, rate(flask_http_request_duration_seconds_bucket[5m])) > 1
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High latency detected"
+            description: "95th percentile latency is {{ $value }} seconds"
+
+        - alert: HighMemoryUsage
+          expr: container_memory_usage_bytes{container="flask-app"} / container_spec_memory_limit_bytes{container="flask-app"} > 0.9
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High memory usage"
+            description: "Flask app memory usage is above 90%"
+
+        - alert: HighCPUUsage
+          expr: rate(container_cpu_usage_seconds_total{container="flask-app"}[5m]) > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "High CPU usage"
+            description: "Flask app CPU usage is above 80%"
+
+        - alert: PodCrashLooping
+          expr: rate(kube_pod_container_status_restarts_total{container="flask-app"}[15m]) > 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod is crash looping"
+            description: "Flask app pod {{ $labels.pod }} is restarting frequently"

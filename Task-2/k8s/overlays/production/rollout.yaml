@@ -1,0 +1,79 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: flask-app
+  labels:
+    app: flask-app
+    strategy: bluegreen
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: flask-app
+
+  template:
+    metadata:
+      labels:
+        app: flask-app
+        version: v1
+    spec:
+      containers:
+      - name: flask-app
+        image: 818604465858.dkr.ecr.ap-south-1.amazonaws.com/flask-app:6
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+
+  strategy:
+    blueGreen:
+      activeService: flask-app-active
+      previewService: flask-app-preview
+      autoPromotionEnabled: false
+      scaleDownDelaySeconds: 30
+      scaleDownDelayRevisionLimit: 2
+      prePromotionAnalysis:
+        templates:
+        - templateName: flask-app-success-rate
+        args:
+        - name: service-name
+          value: flask-app-preview
+      postPromotionAnalysis:
+        templates:
+        - templateName: flask-app-success-rate
+        args:
+        - name: service-name
+          value: flask-app-active

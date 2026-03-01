@@ -1,0 +1,98 @@
+[
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/volumes",
+    "value": [
+      {
+        "name": "config",
+        "configMap": {
+          "name": "grafana"
+        }
+      },
+      {
+        "name": "grafana-datasources",
+        "configMap": {
+          "name": "grafana-datasources"
+        }
+      },
+      {
+        "name": "storage",
+        "emptyDir": {}
+      },
+      {
+        "name": "search",
+        "emptyDir": {}
+      },
+      {
+        "name": "dashboards-provisioning",
+        "configMap": {
+          "name": "grafana-dashboards-provisioning"
+        }
+      },
+      {
+        "name": "dashboards-app-performance",
+        "configMap": {
+          "name": "grafana-dashboards-app-performance"
+        }
+      },
+      {
+        "name": "dashboards-infrastructure",
+        "configMap": {
+          "name": "grafana-dashboards-infrastructure"
+        }
+      },
+      {
+        "name": "dashboards-node-exporter",
+        "configMap": {
+          "name": "grafana-dashboard-node-exporter"
+        }
+      }
+    ]
+  },
+  {
+    "op": "replace",
+    "path": "/spec/template/spec/containers/0/volumeMounts",
+    "value": [
+      {
+        "name": "config",
+        "mountPath": "/etc/grafana",
+        "readOnly": false
+      },
+      {
+        "name": "grafana-datasources",
+        "mountPath": "/etc/grafana/provisioning/datasources",
+        "readOnly": false
+      },
+      {
+        "name": "storage",
+        "mountPath": "/var/lib/grafana",
+        "readOnly": false
+      },
+      {
+        "name": "search",
+        "mountPath": "/var/lib/grafana-search",
+        "readOnly": false
+      },
+      {
+        "name": "dashboards-provisioning",
+        "mountPath": "/etc/grafana/provisioning/dashboards",
+        "readOnly": false
+      },
+      {
+        "name": "dashboards-app-performance",
+        "mountPath": "/var/lib/grafana/dashboards/app-performance",
+        "readOnly": false
+      },
+      {
+        "name": "dashboards-infrastructure",
+        "mountPath": "/var/lib/grafana/dashboards/infrastructure",
+        "readOnly": false
+      },
+      {
+        "name": "dashboards-node-exporter",
+        "mountPath": "/var/lib/grafana/dashboards/node-exporter",
+        "readOnly": false
+      }
+    ]
+  }
+]

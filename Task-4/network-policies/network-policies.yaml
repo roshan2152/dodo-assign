@@ -1,0 +1,223 @@
+---
+# Default Network Policies - Deny All
+# This implements network segmentation using default deny principle
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: voting-app
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: voting-app
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+
+---
+# Allow DNS (required for service discovery)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: voting-app
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+
+---
+# Allow Kubernetes API access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-kubernetes-api
+  namespace: voting-app
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# Allow traffic from ingress controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-ingress
+  namespace: voting-app
+spec:
+  podSelector:
+    matchLabels:
+      app: vote
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
+
+---
+# Allow vote pod to communicate with worker pod
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vote-to-worker-communication
+  namespace: voting-app
+spec:
+  podSelector:
+    matchLabels:
+      app: vote
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: worker
+    ports:
+    - protocol: TCP
+      port: 5000
+
+---
+# Allow worker pod to accept from vote pod
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-accept-from-vote
+  namespace: voting-app
+spec:
+  podSelector:
+    matchLabels:
+      app: worker
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: vote
+    ports:
+    - protocol: TCP
+      port: 5000
+
+---
+# Allow worker to communicate with database
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: worker-to-database
+  namespace: voting-app
+spec:
+  podSelector:
+    matchLabels:
+      app: worker
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+
+---
+# Allow result pod to communicate with database
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: result-to-database
+  namespace: voting-app
+spec:
+  podSelector:
+    matchLabels:
+      app: result
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgres
+    ports:
+    - protocol: TCP
+      port: 5432
+
+---
+# Allow result pod from ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: result-from-ingress
+  namespace: voting-app
+spec:
+  podSelector:
+    matchLabels:
+      app: result
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 5001
+
+---
+# Allow Vault access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-vault-access
+  namespace: voting-app
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: default
+      podSelector:
+        matchLabels:
+          app: vault
+    ports:
+    - protocol: TCP
+      port: 8200
