@@ -6,7 +6,7 @@ metadata:
     app: flask-app
     strategy: bluegreen
 spec:
-  replicas: 3
+  replicas: 1
   revisionHistoryLimit: 5
   selector:
     matchLabels:
