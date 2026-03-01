@@ -21,4 +21,4 @@ replicas:
 images:
 - name: REGISTRY_PLACEHOLDER/myapp
   newName: 818604465858.dkr.ecr.ap-south-1.amazonaws.com/flask-app
-  newTag: "4"
+  newTag: "6"
