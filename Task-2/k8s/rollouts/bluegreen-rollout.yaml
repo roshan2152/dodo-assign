@@ -20,22 +20,23 @@ spec:
     spec:
       containers:
       - name: flask-app
-        image: REGISTRY_PLACEHOLDER/myapp:latest
+        image: python:3.11-slim
+        command: ["python", "-m", "http.server", "80"]
         imagePullPolicy: Always
         ports:
-        - containerPort: 8080
+        - containerPort: 80
           name: http
           protocol: TCP
         livenessProbe:
           httpGet:
             path: /
-            port: 8080
+            port: 80
           initialDelaySeconds: 10
           periodSeconds: 10
         readinessProbe:
           httpGet:
             path: /
-            port: 8080
+            port: 80
           initialDelaySeconds: 5
           periodSeconds: 5
         resources:
@@ -46,8 +47,8 @@ spec:
             memory: "256Mi"
             cpu: "200m"
         securityContext:
-          runAsNonRoot: true
-          runAsUser: 1000
+          # runAsNonRoot: true
+          # runAsUser: 1000
           allowPrivilegeEscalation: false
           capabilities:
             drop:

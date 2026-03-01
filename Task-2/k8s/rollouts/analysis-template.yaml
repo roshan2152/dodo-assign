@@ -11,7 +11,8 @@ spec:
   metrics:
   # Success rate metric (requires Prometheus)
   - name: success-rate
-    interval: 30s
+    interval: 5s
+    count: 2
     successCondition: result >= 0.95
     failureLimit: 3
     provider:
@@ -35,7 +36,8 @@ spec:
 
   # Latency metric
   - name: latency
-    interval: 30s
+    interval: 5s
+    count: 2
     successCondition: result <= 500
     failureLimit: 3
     provider:
